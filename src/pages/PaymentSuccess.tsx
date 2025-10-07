@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { CheckCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import Header from '../components/Header';
@@ -8,8 +9,14 @@ import FooterSection from '../components/FooterSections';
 const PaymentSuccess = () => {
     const [registrationStatus, setRegistrationStatus] = useState<'pending' | 'success' | 'error' | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
+    const location = useLocation();
+    const [transactionId, setTransactionId] = useState<string | null>(null);
 
     useEffect(() => {
+    // Get tid from query params
+    const params = new URLSearchParams(location.search);
+    const tid = params.get('tid');
+    setTransactionId(tid);
         const submitRegistration = async () => {
             const pending = localStorage.getItem('pendingRegistration');
             if (!pending) {
@@ -54,6 +61,9 @@ const PaymentSuccess = () => {
                     <p className="text-gray-700 mb-6">
                         Thank you for registering for the Nursing Summit 2026. A confirmation email has been sent to your registered email address.
                     </p>
+                    {transactionId && (
+                        <p className="text-green-800 font-semibold mb-2">Transaction ID: <span className="font-mono">{transactionId}</span></p>
+                    )}
                     {registrationStatus === 'pending' && (
                         <p className="text-blue-600 mb-4">Submitting your registration details...</p>
                     )}
