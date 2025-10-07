@@ -57,16 +57,8 @@ const App = () => (
           <Route path="/agenda" element={<Agenda />} />
           <Route path="/speakers" element={<SpeakersPage />} />
           <Route path="/contact" element={<ContactPage />} />
-          <Route path="/payment-success" element={
-            <StripeProtectedRoute>
-              <PaymentSuccess />
-            </StripeProtectedRoute>
-          } />
-          <Route path="/payment-failure" element={
-            <StripeProtectedRoute>
-              <PaymentFailure />
-            </StripeProtectedRoute>
-          } />
+          <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/payment-failure" element={<PaymentFailure />} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>

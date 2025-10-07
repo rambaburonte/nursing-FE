@@ -13,42 +13,52 @@ const PaymentSuccess = () => {
     const [transactionId, setTransactionId] = useState<string | null>(null);
 
     useEffect(() => {
-    // Get tid from query params
-    const params = new URLSearchParams(location.search);
-    const tid = params.get('tid');
-    setTransactionId(tid);
-        const submitRegistration = async () => {
-            const pending = localStorage.getItem('pendingRegistration');
-            if (!pending) {
-                setRegistrationStatus(null);
-                return;
-            }
+        // Get session_id from query params
+        const params = new URLSearchParams(location.search);
+        const sessionId = params.get('session_id');
+        setTransactionId(sessionId);
+
+        if (!sessionId) {
+            setRegistrationStatus(null);
+            setErrorMsg('No session id found in URL.');
+            return;
+        }
+
+        const checkAndUpdatePayment = async () => {
             setRegistrationStatus('pending');
             try {
-                const registrationData = JSON.parse(pending);
-                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "https://nursing.markmarketing.xyz"}/api/registration/register`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(registrationData),
-                });
-                if (response.ok) {
-                    setRegistrationStatus('success');
-                    localStorage.removeItem('pendingRegistration');
-                } else {
-                    let errorMessage = 'Registration failed after payment.';
-                    try {
-                        const errorData = await response.json();
-                        errorMessage = errorData.message || errorData.error || errorMessage;
-                    } catch {}
-                    setErrorMsg(errorMessage);
+                // 1. Check payment status
+                const statusRes = await fetch(`${import.meta.env.VITE_API_BASE_URL || "https://nursing.markmarketing.xyz"}/api/payment/status/${sessionId}`);
+                if (!statusRes.ok) {
                     setRegistrationStatus('error');
+                    setErrorMsg('Could not verify payment status.');
+                    return;
                 }
+                const statusData = await statusRes.json();
+                if (statusData.status !== 'success') {
+                    setRegistrationStatus('error');
+                    setErrorMsg('Payment not successful.');
+                    return;
+                }
+
+                // 2. Update payment status in DB
+                const updateRes = await fetch(`${import.meta.env.VITE_API_BASE_URL || "https://nursing.markmarketing.xyz"}/api/payment/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `sessionId=${encodeURIComponent(sessionId)}`,
+                });
+                if (!updateRes.ok) {
+                    setRegistrationStatus('error');
+                    setErrorMsg('Failed to update payment status in database.');
+                    return;
+                }
+                setRegistrationStatus('success');
             } catch (err) {
-                setErrorMsg('Could not submit registration after payment.');
                 setRegistrationStatus('error');
+                setErrorMsg('Error processing payment status.');
             }
         };
-        submitRegistration();
+        checkAndUpdatePayment();
     }, []);
 
     return (
