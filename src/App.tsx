@@ -1,19 +1,3 @@
-import { useEffect } from "react";
-import { useLocation, Navigate } from "react-router-dom";
-// Protect payment result routes from direct access
-const StripeProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const location = useLocation();
-  // You can use a more robust check (e.g. sessionStorage, query param, etc.)
-  const allowed = sessionStorage.getItem("stripeRedirect") === "true";
-  useEffect(() => {
-    // Clear the flag after showing the page once
-    if (allowed) sessionStorage.removeItem("stripeRedirect");
-  }, [allowed]);
-  if (!allowed) {
-    return <Navigate to="/register" state={{ from: location }} replace />;
-  }
-  return <>{children}</>;
-};
 import { Toaster as DefaultToaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";

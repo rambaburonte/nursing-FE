@@ -19,8 +19,8 @@ const PaymentSuccess = () => {
         setTransactionId(sessionId);
 
         if (!sessionId) {
-            setRegistrationStatus(null);
-            setErrorMsg('No session id found in URL.');
+            setRegistrationStatus('error');
+            setErrorMsg('Invalid payment link. Please complete your registration through the proper payment process.');
             return;
         }
 
