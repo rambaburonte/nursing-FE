@@ -1,40 +1,57 @@
-import React from "react";
+
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { BASE_URL } from "@/config";
 import Header from "@/components/Header";
 import Footer from "@/components/FooterSections";
 import { Card, CardContent } from "@/components/ui/card";
-import janeWatsonImage from "@/assets/speaker-jane-watson.jpg";
-import thomasLeeImage from "@/assets/speaker-thomas-lee.jpg";
-import lindaMatthewsImage from "@/assets/speaker-linda-matthews.jpg";
+interface Speaker {
+    id?: string | number;
+    name: string;
+    title?: string;
+    institution?: string;
+    university?: string;
+    image?: string;
+    imageUrl?: string;
+    bio?: string;
+    type?: string;
+}
 
-const speakers = [
-    {
-        name: "Dr. Jane Watson",
-        title: "Chief Nursing Officer",
-        institution: "Johns Hopkins Hospital",
-        image: janeWatsonImage,
-        bio: "Leading expert in nursing innovation and patient care excellence with over 25 years of experience.",
-    },
-    {
-        name: "Dr. Thomas Lee",
-        title: "Director of Nursing Research",
-        institution: "Mayo Clinic",
-        image: thomasLeeImage,
-        bio: "Pioneering researcher in evidence-based nursing practice and healthcare quality improvement.",
-    },
-    {
-        name: "Prof. Linda Matthews",
-        title: "Dean of Nursing",
-        institution: "University of Toronto",
-        image: lindaMatthewsImage,
-        bio: "Renowned educator and advocate for advanced nursing practice and global health initiatives.",
-    },
-];
+const API_URL = `${BASE_URL}/api/speakers/nursing`;
+const placeholder = "";
+
 
 const SpeakersPage = () => {
+    const [speakers, setSpeakers] = useState<Speaker[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        const fetchSpeakers = async () => {
+            setLoading(true);
+            setError("");
+            try {
+                const res = await axios.get(API_URL);
+                setSpeakers(res.data);
+            } catch (e) {
+                setError("Failed to fetch speakers");
+            }
+            setLoading(false);
+        };
+        fetchSpeakers();
+    }, []);
+
+    // Dynamically determine grid columns based on speaker count
+    let gridCols = "grid-cols-1";
+    if (speakers.length >= 6) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6";
+    else if (speakers.length === 5) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5";
+    else if (speakers.length === 4) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-4";
+    else if (speakers.length === 3) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3";
+    else if (speakers.length === 2) gridCols = "grid-cols-1 md:grid-cols-2";
+
     return (
         <>
             <Header />
-
             <main className="bg-[#4EB6B8] min-h-screen py-20 px-4">
                 <div className="max-w-7xl mx-auto text-center">
                     <h1 className="text-4xl font-bold text-white mb-4">Keynote Speakers</h1>
@@ -42,31 +59,39 @@ const SpeakersPage = () => {
                         Learn from world-renowned nursing leaders who are shaping the future of healthcare
                     </p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                        {speakers.map((speaker, index) => (
-                            <Card
-                                key={index}
-                                className="text-center border-0 shadow-lg hover:shadow-xl transition-shadow bg-white"
-                            >
-                                <CardContent className="p-8">
-                                    <div className="w-32 h-32 rounded-full mx-auto mb-6 overflow-hidden border-4 border-nursing-accent">
-                                        <img
-                                            src={speaker.image}
-                                            alt={speaker.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                    <h3 className="text-xl font-bold text-nursing-text mb-2">{speaker.name}</h3>
-                                    <p className="text-nursing-primary font-medium mb-1">{speaker.title}</p>
-                                    <p className="text-nursing-text-light mb-4">{speaker.institution}</p>
-                                    <p className="text-sm text-nursing-text-light leading-relaxed">{speaker.bio}</p>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
+                    {error && <div className="text-red-500 text-center mb-4">{error}</div>}
+                    {loading ? (
+                        <div className="text-center">Loading...</div>
+                    ) : (
+                        <div className={`grid ${gridCols} gap-10`}>
+                            {speakers.map((speaker, index) => (
+                                <Card
+                                    key={speaker.id || index}
+                                    className="text-center border-0 shadow-lg hover:shadow-xl transition-shadow bg-white"
+                                >
+                                    <CardContent className="p-8">
+                                        <div className="w-32 h-32 rounded-full mx-auto mb-6 overflow-hidden border-4 border-nursing-accent">
+                                            {speaker.imageUrl && (
+                                                <img
+                                                    src={speaker.imageUrl}
+                                                    alt={speaker.name}
+                                                    className="w-full h-full object-cover"
+                                                    loading="lazy"
+                                                    onError={e => (e.currentTarget.src = placeholder)}
+                                                />
+                                            )}
+                                        </div>
+                                        <h3 className="text-xl font-bold text-nursing-text mb-2">{speaker.name}</h3>
+                                        <p className="text-nursing-primary font-medium mb-1">{speaker.title}</p>
+                                        <p className="text-nursing-text-light mb-4">{speaker.university || speaker.institution}</p>
+                                        <p className="text-sm text-nursing-text-light leading-relaxed">{speaker.bio}</p>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </main>
-
             <Footer />
         </>
     );

@@ -1,38 +1,54 @@
+
+import React, { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
+import axios from "axios";
+import { BASE_URL } from "@/config";
 
-import janeWatsonImage from "@/assets/speaker-jane-watson.jpg";
-import thomasLeeImage from "@/assets/speaker-thomas-lee.jpg";
-import lindaMatthewsImage from "@/assets/speaker-linda-matthews.jpg";
+interface Speaker {
+  id?: string | number;
+  name: string;
+  title?: string;
+  institution?: string;
+  image?: string;
+  imageUrl?: string;
+  bio?: string;
+  link?: string;
+  type?: string;
+}
+
+
+const API_URL = `${BASE_URL}/api/speakers/nursing`;
+const placeholder = "";
 
 const SpeakersSection = () => {
-  const speakers = [
-    {
-      name: "Dr. Jane Watson",
-      title: "Chief Nursing Officer",
-      institution: "Johns Hopkins Hospital",
-      image: janeWatsonImage,
-      bio: "Leading expert in nursing innovation and patient care excellence with over 25 years of experience.",
-      link: "/speakers#jane-watson",
-    },
-    {
-      name: "Dr. Thomas Lee",
-      title: "Director of Nursing Research",
-      institution: "Mayo Clinic",
-      image: thomasLeeImage,
-      bio: "Pioneering researcher in evidence-based nursing practice and healthcare quality improvement.",
-      link: "/speakers#thomas-lee",
-    },
-    {
-      name: "Prof. Linda Matthews",
-      title: "Dean of Nursing",
-      institution: "University of Toronto",
-      image: lindaMatthewsImage,
-      bio: "Renowned educator and advocate for advanced nursing practice and global health initiatives.",
-      link: "/speakers#linda-matthews",
-    },
-  ];
+  const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchSpeakers = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await axios.get(API_URL);
+        setSpeakers(res.data);
+      } catch (e) {
+        setError("Failed to fetch speakers");
+      }
+      setLoading(false);
+    };
+    fetchSpeakers();
+  }, []);
+
+  // Dynamically determine grid columns based on speaker count
+  let gridCols = "grid-cols-1";
+  if (speakers.length >= 6) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6";
+  else if (speakers.length === 5) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5";
+  else if (speakers.length === 4) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-4";
+  else if (speakers.length === 3) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3";
+  else if (speakers.length === 2) gridCols = "grid-cols-1 md:grid-cols-2";
 
   return (
     <section id="speakers" className="py-20 bg-[#4EB6B8]">
@@ -44,39 +60,51 @@ const SpeakersSection = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
-          {speakers.map((speaker, index) => (
-            <div
-              key={index}
-              data-aos="fade-up"
-              data-aos-delay={`${index * 150}`}
-              className="hover:scale-[1.03] transition-transform duration-300"
-            >
-              <Card className="text-center border-0 shadow-md hover:shadow-xl transition-shadow bg-white h-full rounded-2xl">
-                <CardContent className="p-8">
-                  <div className="w-32 h-32 rounded-full mx-auto mb-6 overflow-hidden border-[6px] border-white shadow-inner shadow-nursing-primary/20 aspect-square bg-white">
-                    <img
-                      src={speaker.image}
-                      alt={speaker.name}
-                      className="w-full h-full object-cover rounded-full"
-                    />
-                  </div>
-                  <h3 className="text-xl font-bold text-nursing-text mb-2">{speaker.name}</h3>
-                  <p className="text-nursing-primary font-medium mb-1">{speaker.title}</p>
-                  <p className="text-nursing-text-light mb-4">{speaker.institution}</p>
-                  <p className="text-sm text-nursing-text-light leading-relaxed mb-4">{speaker.bio}</p>
+        {/* Speaker Cards */}
+        {error && <div className="text-red-500 text-center mb-4">{error}</div>}
+        {loading ? (
+          <div className="text-center">Loading...</div>
+        ) : (
+          <div className={`grid ${gridCols} gap-8 mb-12`}>
+            {speakers.map((speaker, index) => (
+              <div
+                key={speaker.id || index}
+                data-aos="fade-up"
+                data-aos-delay={`${index * 150}`}
+                className="hover:scale-[1.03] transition-transform duration-300"
+              >
+                <Card className="text-center border-0 shadow-md hover:shadow-xl transition-shadow bg-white h-full rounded-2xl">
+                  <CardContent className="p-8">
+                    <div className="w-32 h-32 rounded-full mx-auto mb-6 overflow-hidden border-[6px] border-white shadow-inner shadow-nursing-primary/20 aspect-square bg-white">
+                      {speaker.imageUrl && (
+                        <img
+                          src={speaker.imageUrl}
+                          alt={speaker.name}
+                          className="w-full h-full object-cover rounded-full"
+                          loading="lazy"
+                          onError={e => (e.currentTarget.src = placeholder)}
+                        />
+                      )}
+                    </div>
+                    <h3 className="text-xl font-bold text-nursing-text mb-2">{speaker.name}</h3>
+                    <p className="text-nursing-primary font-medium mb-1">{speaker.title}</p>
+                    <p className="text-nursing-text-light mb-4">{speaker.institution}</p>
+                    <p className="text-sm text-nursing-text-light leading-relaxed mb-4">{speaker.bio}</p>
 
-                  <Link
-                    to={speaker.link}
-                    className="inline-flex items-center text-sm text-nursing-primary font-medium hover:underline hover:text-nursing-primary/90 transition"
-                  >
-                    Read more <ArrowUpRight size={16} className="ml-1" />
-                  </Link>
-                </CardContent>
-              </Card>
-            </div>
-          ))}
-        </div>
+                    {speaker.link && (
+                      <Link
+                        to={speaker.link}
+                        className="inline-flex items-center text-sm text-nursing-primary font-medium hover:underline hover:text-nursing-primary/90 transition"
+                      >
+                        Read more <ArrowUpRight size={16} className="ml-1" />
+                      </Link>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="text-center">
           <Link

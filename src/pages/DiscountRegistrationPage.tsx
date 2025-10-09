@@ -61,8 +61,8 @@ const DiscountRegistrationPage = () => {
                 unitAmount: form.discountAmount, // send as entered
                 quantity: 1,
                 currency: "eur",
-                successUrl: window.location.origin + "/discount-success",
-                cancelUrl: window.location.origin + "/discount-cancel",
+                successUrl: window.location.origin + "/payment-success",
+                cancelUrl: window.location.origin + "/payment-failure",
                 customerEmail: form.email,
                 name: form.name,
                 phone: form.phone,

@@ -310,7 +310,6 @@ const Register: React.FC<{
     const [pricingError, setPricingError] = useState<string>('');
     const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
     const [paymentError, setPaymentError] = useState<string>('');
-    const [paypalMessage, setPaypalMessage] = useState<string>('');
     const [showCaptcha, setShowCaptcha] = useState(false);
 
     // Add refs for error fields
@@ -355,7 +354,6 @@ const Register: React.FC<{
                 default:
                     backendPresentationType = registerFormData.presentationType.toUpperCase();
             }
-
             const pricingRequest = {
                 registrationType: registerFormData.registrationType === 'registrationAndAccommodation'
                     ? 'REGISTRATION_AND_ACCOMMODATION'
@@ -509,9 +507,10 @@ const Register: React.FC<{
             if (response.ok) {
                 const paymentSession = await response.json();
                 if (paymentSession.url) {
+                    sessionStorage.setItem("stripeRedirect", "true");
                     window.location.href = paymentSession.url;
                 } else {
-                    throw new Error('Invalid payment session response');
+                    throw new Error('No payment URL received');
                 }
             } else {
                 let errorMessage = 'Failed to create payment session';
@@ -530,77 +529,8 @@ const Register: React.FC<{
         }
     };
 
-    const createPayPalOrder = async (pricingConfigId: number): Promise<{ orderId: string; approvalUrl: string }> => {
-        setIsProcessingPayment(true);
-        setPaymentError('');
-        setPaypalMessage('');
-
-        try {
-            const selectedPricing = pricing?.find(p => p.id === pricingConfigId);
-            if (!selectedPricing) {
-                throw new Error('Selected pricing configuration not found');
-            }
-
-            if (isNaN(selectedPricing.totalPrice)) {
-                throw new Error('Invalid price amount');
-            }
-
-            // Create PayPal order request matching backend expectations
-            const paypalRequest = {
-                customerEmail: registerFormData.email,
-                customerName: registerFormData.name,
-                phone: registerFormData.phone,
-                country: registerFormData.country,
-                instituteOrUniversity: registerFormData.institute,
-                amount: selectedPricing.totalPrice,
-                currency: 'EUR',
-                pricingConfigId: pricingConfigId,
-                successUrl: `${window.location.origin}/payment-success`,
-                cancelUrl: `${window.location.origin}/register`,
-            };
-
-            console.log('Creating PayPal order with request:', paypalRequest);
-
-            const response = await fetch(`${PAYMENT_API_URL}/api/payment/paypal/create`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(paypalRequest),
-            });
-
-            console.log('PayPal create response status:', response.status);
-
-            if (response.ok) {
-                const data = await response.json();
-                console.log('PayPal create response data:', data);
-                if (data.orderId && data.approvalUrl) {
-                    // Return both orderId and approvalUrl
-                    return { orderId: data.orderId, approvalUrl: data.approvalUrl };
-                } else if (data.orderId) {
-                    // Fallback: construct approval URL if not provided
-                    const approvalUrl = `https://www.sandbox.paypal.com/checkoutnow?token=${data.orderId}`;
-                    return { orderId: data.orderId, approvalUrl: approvalUrl };
-                } else {
-                    throw new Error('Invalid response from PayPal service - no orderId');
-                }
-            } else {
-                const errorData = await response.json();
-                console.error('PayPal create error response:', errorData);
-                throw new Error(errorData.message || 'Failed to create PayPal order');
-            }
-        } catch (error) {
-            console.error('PayPal order creation error:', error);
-            setPaymentError(`PayPal error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            throw error;
-        } finally {
-            setIsProcessingPayment(false);
-        }
-    };
-
-
-
-    const handlePayment = async (paymentFunction: (pricingConfigId: number) => Promise<void>) => {
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!validate()) return;
 
         if (!pricing || pricing.length === 0) {
@@ -637,7 +567,7 @@ const Register: React.FC<{
 
             if (response.ok) {
                 const pricingConfigId = pricing[0].id;
-                await paymentFunction(pricingConfigId);
+                await createPaymentSession(pricingConfigId);
             } else {
                 const registrationDataForStorage = {
                     name: registerFormData.name,
@@ -671,7 +601,7 @@ const Register: React.FC<{
                 setErrors((prev) => ({ ...prev, general: errorMessage }));
 
                 const pricingConfigId = pricing[0].id;
-                await paymentFunction(pricingConfigId);
+                await createPaymentSession(pricingConfigId);
             }
         } catch (error) {
             // If registration API fails completely, try direct payment
@@ -699,7 +629,7 @@ const Register: React.FC<{
                 localStorage.setItem('pendingRegistration', JSON.stringify(registrationDataForStorage));
                 // Proceed to payment
                 const pricingConfigId = pricing[0].id;
-                await paymentFunction(pricingConfigId);
+                await createPaymentSession(pricingConfigId);
             } catch (paymentError) {
                 setErrors((prev) => ({
                     ...prev,
@@ -709,188 +639,14 @@ const Register: React.FC<{
         }
     };
 
-    const handleStripePayment = async (pricingConfigId: number): Promise<void> => {
-        return createPaymentSession(pricingConfigId);
-    };
-
-    const handlePayPalPayment = async (): Promise<{ orderId: string; approvalUrl: string }> => {
-        if (!validate()) throw new Error('Validation failed');
-
-        if (!pricing || pricing.length === 0) {
-            throw new Error('Pricing information not available');
-        }
-
-        try {
-            // Create the PayPal order and return both orderId and approvalUrl
-            const pricingConfigId = pricing[0].id;
-            const orderResult = await createPayPalOrder(pricingConfigId);
-            return orderResult;
-        } catch (error) {
-            setPaymentError(`PayPal order creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            throw error;
-        }
-    };
-
-    const handlePayPalDirectPayment = async () => {
-        if (!validate()) return;
-
-        if (!pricing || pricing.length === 0) {
-            setErrors((prev) => ({ ...prev, general: 'Please wait for pricing information to load or check your selection.' }));
-            return;
-        }
-
-        setIsProcessingPayment(true);
-        setPaymentError('');
-        setPaypalMessage('Creating PayPal payment...');
-
-        try {
-            const pricingConfigId = pricing[0].id;
-            
-            // Create PayPal order via backend API
-            const orderResult = await createPayPalOrder(pricingConfigId);
-            
-            // Store registration data for completion after PayPal return
-            const registrationData = {
-                name: registerFormData.name,
-                phone: registerFormData.phone,
-                email: registerFormData.email,
-                instituteOrUniversity: registerFormData.institute,
-                country: registerFormData.country,
-                presentationType: (() => {
-                    switch (registerFormData.presentationType) {
-                        case 'abstract-submission':
-                            return 'DELEGATE';
-                        case 'listener/delegate':
-                            return 'LISTENER';
-                        default:
-                            return registerFormData.presentationType ? registerFormData.presentationType.toUpperCase() : '';
-                    }
-                })(),
-                orderId: orderResult.orderId,
-                pricingConfigId: pricingConfigId
-            };
-            localStorage.setItem('paypalRegistration', JSON.stringify(registrationData));
-            
-            setPaypalMessage('Redirecting to PayPal...');
-            
-            // Redirect to PayPal using the approval URL from backend
-            window.location.href = orderResult.approvalUrl;
-            
-        } catch (error) {
-            setPaymentError(`PayPal payment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            setPaypalMessage('');
-        } finally {
-            setIsProcessingPayment(false);
-        }
-    };
-
-    const handlePayPalRegistrationAndPayment = async () => {
-        if (!validate()) return;
-
-        if (!pricing || pricing.length === 0) {
-            setErrors((prev) => ({ ...prev, general: 'Please wait for pricing information to load or check your selection.' }));
-            return;
-        }
-
-        try {
-            const registrationData = {
-                name: registerFormData.name,
-                phone: registerFormData.phone,
-                email: registerFormData.email,
-                instituteOrUniversity: registerFormData.institute,
-                country: registerFormData.country,
-                presentationType: (() => {
-                    switch (registerFormData.presentationType) {
-                        case 'abstract-submission':
-                            return 'DELEGATE';
-                        case 'listener/delegate':
-                            return 'LISTENER';
-                        default:
-                            return registerFormData.presentationType ? registerFormData.presentationType.toUpperCase() : '';
-                    }
-                })(),
-            };
-
-            const response = await fetch(`${BASE_URL}/api/registration/register`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(registrationData),
-            });
-
-            if (response.ok) {
-                // Registration successful, PayPal order will be created when user clicks PayPal button
-                setPaypalMessage('Registration successful. You can now proceed with PayPal payment.');
-            } else {
-                const registrationDataForStorage = {
-                    name: registerFormData.name,
-                    phone: registerFormData.phone,
-                    email: registerFormData.email,
-                    instituteOrUniversity: registerFormData.institute,
-                    country: registerFormData.country,
-                    registrationType: registerFormData.registrationType === 'registrationAndAccommodation'
-                        ? 'REGISTRATION_AND_ACCOMMODATION'
-                        : 'REGISTRATION_ONLY',
-                    presentationType: (() => {
-                        switch (registerFormData.presentationType) {
-                            case 'abstract-submission':
-                                return 'DELEGATE';
-                            case 'listener/delegate':
-                                return 'LISTENER';
-                            default:
-                                return registerFormData.presentationType.toUpperCase();
-                        }
-                    })(),
-                };
-                localStorage.setItem('pendingRegistration', JSON.stringify(registrationDataForStorage));
-
-                let errorMessage = 'Registration failed';
-                try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.message || errorData.error || errorMessage;
-                } catch (e) {
-                    errorMessage = `Registration failed: ${response.status} ${response.statusText}`;
-                }
-                setErrors((prev) => ({ ...prev, general: errorMessage }));
-                setPaypalMessage('Registration failed, but you can still proceed with payment.');
-            }
-        } catch (error) {
-            // If registration API fails completely, try direct payment
-            const registrationDataForStorage = {
-                name: registerFormData.name,
-                phone: registerFormData.phone,
-                email: registerFormData.email,
-                instituteOrUniversity: registerFormData.institute,
-                country: registerFormData.country,
-                registrationType: registerFormData.registrationType === 'registrationAndAccommodation'
-                    ? 'REGISTRATION_AND_ACCOMMODATION'
-                    : 'REGISTRATION_ONLY',
-                presentationType: (() => {
-                    switch (registerFormData.presentationType) {
-                        case 'abstract-submission':
-                            return 'DELEGATE';
-                        case 'listener/delegate':
-                            return 'LISTENER';
-                        default:
-                            return registerFormData.presentationType.toUpperCase();
-                    }
-                })(),
-            };
-            localStorage.setItem('pendingRegistration', JSON.stringify(registrationDataForStorage));
-            setPaypalMessage('Registration API unavailable, but you can still proceed with payment.');
-        }
-    };
-
     useEffect(() => {
         const handlePasteShortcut = (e: KeyboardEvent) => {
             if (document.activeElement === captchaRef.current) {
                 if ((e.altKey && e.key.toLowerCase() === 'v') || (e.ctrlKey && e.key.toLowerCase() === 'v')) {
-                    setTimeout(() => {
-                        if (captchaRef.current) {
-                            setRegisterFormData((prev) => ({ ...prev, captcha: captchaRef.current!.value }));
-                        }
-                    }, 10);
+                    e.preventDefault();
+                    navigator.clipboard.readText().then((clipText) => {
+                        setRegisterFormData((prev) => ({ ...prev, captcha: clipText.slice(0, 6) }));
+                    });
                 }
             }
         };
@@ -899,7 +655,7 @@ const Register: React.FC<{
     }, [setRegisterFormData]);
 
     return (
-        <form className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
             <div className="info-section">
                 <div className="info-item">
                     <label>Conference Date</label>
@@ -907,7 +663,7 @@ const Register: React.FC<{
                 </div>
                 <div className="info-item">
                     <label>Location</label>
-                    <p>Crowne Plaza Rome - St. Peter's, Rome, Italy</p>
+                    <p>Nursing Venue: Crowne Plaza Rome - St. Peter’s, Rome, Italy</p>
                 </div>
                 <div className="info-item">
                     <label>Registration Deadline</label>
@@ -915,158 +671,305 @@ const Register: React.FC<{
                 </div>
             </div>
 
-            <Style />
+
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Title
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
                     <select
                         name="title"
                         value={registerFormData.title}
                         onChange={handleInputChange}
-                        className="form-select"
+                        className={`form-select${errors.title ? ' error' : ''}`}
                     >
-                        <option value="">Select Title</option>
-                        <option value="Dr.">Dr.</option>
-                        <option value="Prof.">Prof.</option>
-                        <option value="Mr.">Mr.</option>
-                        <option value="Ms.">Ms.</option>
-                        <option value="Mrs.">Mrs.</option>
+                        <option value="">Select Title *</option>
+                        <option value="Mr">Mr</option>
+                        <option value="Ms">Ms</option>
+                        <option value="Dr">Dr</option>
+                        <option value="Prof">Prof</option>
                     </select>
+                    {errors.title && <p className="error-text">{errors.title}</p>}
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Name *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Full Name *</label>
                     <input
-                        ref={nameRef}
                         type="text"
                         name="name"
                         value={registerFormData.name}
                         onChange={handleInputChange}
-                        className={`form-input ${errors.name ? 'error' : ''}`}
                         placeholder="Enter your full name"
-                        required
+                        className={`form-input${errors.name ? ' error' : ''}`}
+                        ref={nameRef}
                     />
-                    {errors.name && <div className="error-text">{errors.name}</div>}
+                    {errors.name && <p className="error-text">{errors.name}</p>}
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Phone *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
                     <input
-                        ref={phoneRef}
                         type="tel"
                         name="phone"
                         value={registerFormData.phone}
                         onChange={handleInputChange}
-                        className={`form-input ${errors.phone ? 'error' : ''}`}
                         placeholder="Enter your phone number"
-                        required
+                        className={`form-input${errors.phone ? ' error' : ''}`}
+                        ref={phoneRef}
                     />
-                    {errors.phone && <div className="error-text">{errors.phone}</div>}
+                    {errors.phone && <p className="error-text">{errors.phone}</p>}
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Email *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
                     <input
-                        ref={emailRef}
                         type="email"
                         name="email"
                         value={registerFormData.email}
                         onChange={handleInputChange}
-                        className={`form-input ${errors.email ? 'error' : ''}`}
                         placeholder="Enter your email address"
-                        required
+                        className={`form-input${errors.email ? ' error' : ''}`}
+                        ref={emailRef}
                     />
-                    {errors.email && <div className="error-text">{errors.email}</div>}
+                    {errors.email && <p className="error-text">{errors.email}</p>}
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Institute/University *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Institute/Organization *</label>
                     <input
-                        ref={instituteRef}
                         type="text"
                         name="institute"
                         value={registerFormData.institute}
                         onChange={handleInputChange}
-                        className={`form-input ${errors.institute ? 'error' : ''}`}
-                        placeholder="Enter your institute or university"
-                        required
+                        placeholder="Enter your institute/organization"
+                        className={`form-input${errors.institute ? ' error' : ''}`}
+                        ref={instituteRef}
                     />
-                    {errors.institute && <div className="error-text">{errors.institute}</div>}
+                    {errors.institute && <p className="error-text">{errors.institute}</p>}
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Country *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Country *</label>
                     <select
-                        ref={countryRef}
                         name="country"
                         value={registerFormData.country}
                         onChange={handleInputChange}
-                        className={`form-select ${errors.country ? 'error' : ''}`}
-                        required
+                        className={`form-select${errors.country ? ' error' : ''}`}
+                        ref={countryRef}
                     >
-                        <option value="">Select Country</option>
+                        <option value="">Select your country</option>
                         <option value="Afghanistan">Afghanistan</option>
                         <option value="Albania">Albania</option>
                         <option value="Algeria">Algeria</option>
+                        <option value="Andorra">Andorra</option>
+                        <option value="Angola">Angola</option>
                         <option value="Argentina">Argentina</option>
+                        <option value="Armenia">Armenia</option>
                         <option value="Australia">Australia</option>
                         <option value="Austria">Austria</option>
+                        <option value="Azerbaijan">Azerbaijan</option>
+                        <option value="Bahamas">Bahamas</option>
+                        <option value="Bahrain">Bahrain</option>
                         <option value="Bangladesh">Bangladesh</option>
+                        <option value="Barbados">Barbados</option>
+                        <option value="Belarus">Belarus</option>
                         <option value="Belgium">Belgium</option>
+                        <option value="Belize">Belize</option>
+                        <option value="Benin">Benin</option>
+                        <option value="Bhutan">Bhutan</option>
+                        <option value="Bolivia">Bolivia</option>
+                        <option value="Bosnia and Herzegovina">Bosnia and Herzegovina</option>
+                        <option value="Botswana">Botswana</option>
                         <option value="Brazil">Brazil</option>
+                        <option value="Brunei">Brunei</option>
+                        <option value="Bulgaria">Bulgaria</option>
+                        <option value="Burkina Faso">Burkina Faso</option>
+                        <option value="Burundi">Burundi</option>
+                        <option value="Cabo Verde">Cabo Verde</option>
+                        <option value="Cambodia">Cambodia</option>
+                        <option value="Cameroon">Cameroon</option>
                         <option value="Canada">Canada</option>
+                        <option value="Central African Republic">Central African Republic</option>
+                        <option value="Chad">Chad</option>
+                        <option value="Chile">Chile</option>
                         <option value="China">China</option>
+                        <option value="Colombia">Colombia</option>
+                        <option value="Comoros">Comoros</option>
+                        <option value="Congo, Democratic Republic of the">Congo, Democratic Republic of the</option>
+                        <option value="Congo, Republic of the">Congo, Republic of the</option>
+                        <option value="Costa Rica">Costa Rica</option>
+                        <option value="Croatia">Croatia</option>
+                        <option value="Cuba">Cuba</option>
+                        <option value="Cyprus">Cyprus</option>
                         <option value="Czech Republic">Czech Republic</option>
                         <option value="Denmark">Denmark</option>
+                        <option value="Djibouti">Djibouti</option>
+                        <option value="Dominica">Dominica</option>
+                        <option value="Dominican Republic">Dominican Republic</option>
+                        <option value="Ecuador">Ecuador</option>
                         <option value="Egypt">Egypt</option>
+                        <option value="El Salvador">El Salvador</option>
+                        <option value="Equatorial Guinea">Equatorial Guinea</option>
+                        <option value="Eritrea">Eritrea</option>
+                        <option value="Estonia">Estonia</option>
+                        <option value="Eswatini">Eswatini</option>
+                        <option value="Ethiopia">Ethiopia</option>
+                        <option value="Fiji">Fiji</option>
                         <option value="Finland">Finland</option>
                         <option value="France">France</option>
+                        <option value="Gabon">Gabon</option>
+                        <option value="Gambia">Gambia</option>
+                        <option value="Georgia">Georgia</option>
                         <option value="Germany">Germany</option>
+                        <option value="Ghana">Ghana</option>
+                        <option value="Greece">Greece</option>
+                        <option value="Grenada">Grenada</option>
+                        <option value="Guatemala">Guatemala</option>
+                        <option value="Guinea">Guinea</option>
+                        <option value="Guinea-Bissau">Guinea-Bissau</option>
+                        <option value="Guyana">Guyana</option>
+                        <option value="Haiti">Haiti</option>
+                        <option value="Honduras">Honduras</option>
+                        <option value="Hungary">Hungary</option>
+                        <option value="Iceland">Iceland</option>
                         <option value="India">India</option>
+                        <option value="Indonesia">Indonesia</option>
+                        <option value="Iran">Iran</option>
+                        <option value="Iraq">Iraq</option>
+                        <option value="Ireland">Ireland</option>
+                        <option value="Israel">Israel</option>
                         <option value="Italy">Italy</option>
+                        <option value="Jamaica">Jamaica</option>
                         <option value="Japan">Japan</option>
+                        <option value="Jordan">Jordan</option>
+                        <option value="Kazakhstan">Kazakhstan</option>
+                        <option value="Kenya">Kenya</option>
+                        <option value="Kiribati">Kiribati</option>
+                        <option value="Korea, North">Korea, North</option>
+                        <option value="Korea, South">Korea, South</option>
+                        <option value="Kuwait">Kuwait</option>
+                        <option value="Kyrgyzstan">Kyrgyzstan</option>
+                        <option value="Laos">Laos</option>
+                        <option value="Latvia">Latvia</option>
+                        <option value="Lebanon">Lebanon</option>
+                        <option value="Lesotho">Lesotho</option>
+                        <option value="Liberia">Liberia</option>
+                        <option value="Libya">Libya</option>
+                        <option value="Liechtenstein">Liechtenstein</option>
+                        <option value="Lithuania">Lithuania</option>
+                        <option value="Luxembourg">Luxembourg</option>
+                        <option value="Madagascar">Madagascar</option>
+                        <option value="Malawi">Malawi</option>
+                        <option value="Malaysia">Malaysia</option>
+                        <option value="Maldives">Maldives</option>
+                        <option value="Mali">Mali</option>
+                        <option value="Malta">Malta</option>
+                        <option value="Marshall Islands">Marshall Islands</option>
+                        <option value="Mauritania">Mauritania</option>
+                        <option value="Mauritius">Mauritius</option>
+                        <option value="Mexico">Mexico</option>
+                        <option value="Micronesia">Micronesia</option>
+                        <option value="Moldova">Moldova</option>
+                        <option value="Monaco">Monaco</option>
+                        <option value="Mongolia">Mongolia</option>
+                        <option value="Montenegro">Montenegro</option>
+                        <option value="Morocco">Morocco</option>
+                        <option value="Mozambique">Mozambique</option>
+                        <option value="Myanmar">Myanmar</option>
+                        <option value="Namibia">Namibia</option>
+                        <option value="Nauru">Nauru</option>
+                        <option value="Nepal">Nepal</option>
                         <option value="Netherlands">Netherlands</option>
+                        <option value="New Zealand">New Zealand</option>
+                        <option value="Nicaragua">Nicaragua</option>
+                        <option value="Niger">Niger</option>
+                        <option value="Nigeria">Nigeria</option>
+                        <option value="North Macedonia">North Macedonia</option>
                         <option value="Norway">Norway</option>
+                        <option value="Oman">Oman</option>
+                        <option value="Pakistan">Pakistan</option>
+                        <option value="Palau">Palau</option>
+                        <option value="Palestine">Palestine</option>
+                        <option value="Panama">Panama</option>
+                        <option value="Papua New Guinea">Papua New Guinea</option>
+                        <option value="Paraguay">Paraguay</option>
+                        <option value="Peru">Peru</option>
+                        <option value="Philippines">Philippines</option>
                         <option value="Poland">Poland</option>
+                        <option value="Portugal">Portugal</option>
+                        <option value="Qatar">Qatar</option>
+                        <option value="Romania">Romania</option>
+                        <option value="Russia">Russia</option>
+                        <option value="Rwanda">Rwanda</option>
+                        <option value="Saint Kitts and Nevis">Saint Kitts and Nevis</option>
+                        <option value="Saint Lucia">Saint Lucia</option>
+                        <option value="Saint Vincent and the Grenadines">Saint Vincent and the Grenadines</option>
+                        <option value="Samoa">Samoa</option>
+                        <option value="San Marino">San Marino</option>
+                        <option value="Sao Tome and Principe">Sao Tome and Principe</option>
+                        <option value="Saudi Arabia">Saudi Arabia</option>
+                        <option value="Senegal">Senegal</option>
+                        <option value="Serbia">Serbia</option>
+                        <option value="Seychelles">Seychelles</option>
+                        <option value="Sierra Leone">Sierra Leone</option>
+                        <option value="Singapore">Singapore</option>
+                        <option value="Slovakia">Slovakia</option>
+                        <option value="Slovenia">Slovenia</option>
+                        <option value="Solomon Islands">Solomon Islands</option>
+                        <option value="Somalia">Somalia</option>
+                        <option value="South Africa">South Africa</option>
+                        <option value="South Sudan">South Sudan</option>
                         <option value="Spain">Spain</option>
+                        <option value="Sri Lanka">Sri Lanka</option>
+                        <option value="Sudan">Sudan</option>
+                        <option value="Suriname">Suriname</option>
                         <option value="Sweden">Sweden</option>
                         <option value="Switzerland">Switzerland</option>
+                        <option value="Syria">Syria</option>
+                        <option value="Taiwan">Taiwan</option>
+                        <option value="Tajikistan">Tajikistan</option>
+                        <option value="Tanzania">Tanzania</option>
+                        <option value="Thailand">Thailand</option>
+                        <option value="Timor-Leste">Timor-Leste</option>
+                        <option value="Togo">Togo</option>
+                        <option value="Tonga">Tonga</option>
+                        <option value="Trinidad and Tobago">Trinidad and Tobago</option>
+                        <option value="Tunisia">Tunisia</option>
+                        <option value="Turkey">Turkey</option>
+                        <option value="Turkmenistan">Turkmenistan</option>
+                        <option value="Tuvalu">Tuvalu</option>
+                        <option value="Uganda">Uganda</option>
+                        <option value="Ukraine">Ukraine</option>
+                        <option value="United Arab Emirates">United Arab Emirates</option>
                         <option value="United Kingdom">United Kingdom</option>
                         <option value="United States">United States</option>
+                        <option value="Uruguay">Uruguay</option>
+                        <option value="Uzbekistan">Uzbekistan</option>
+                        <option value="Vanuatu">Vanuatu</option>
+                        <option value="Vatican City">Vatican City</option>
+                        <option value="Venezuela">Venezuela</option>
+                        <option value="Vietnam">Vietnam</option>
+                        <option value="Yemen">Yemen</option>
+                        <option value="Zambia">Zambia</option>
+                        <option value="Zimbabwe">Zimbabwe</option>
                     </select>
-                    {errors.country && <div className="error-text">{errors.country}</div>}
+                    {errors.country && <p className="error-text">{errors.country}</p>}
                 </div>
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-4">
-                    Registration Type *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-4">Registration Type *</label>
                 <div className="radio-group">
                     <label className="radio-label">
                         <input
-                            ref={registrationTypeRef}
                             type="radio"
                             name="registrationType"
                             value="registrationOnly"
                             checked={registerFormData.registrationType === 'registrationOnly'}
                             onChange={handleInputChange}
                             className="radio-input"
+                            ref={registrationTypeRef}
                         />
-                        Registration Only
+                        <span>Registration Only</span>
                     </label>
                     <label className="radio-label">
                         <input
@@ -1077,28 +980,26 @@ const Register: React.FC<{
                             onChange={handleInputChange}
                             className="radio-input"
                         />
-                        Registration + Accommodation
+                        <span>Registration + Accommodation</span>
                     </label>
                 </div>
-                {errors.registrationType && <div className="error-text">{errors.registrationType}</div>}
+                {errors.registrationType && <p className="error-text">{errors.registrationType}</p>}
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-4">
-                    Presentation Type *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-4">Presentation Type *</label>
                 <div className="radio-group">
                     <label className="radio-label">
                         <input
-                            ref={presentationTypeRef}
                             type="radio"
                             name="presentationType"
                             value="speaker"
                             checked={registerFormData.presentationType === 'speaker'}
                             onChange={handleInputChange}
                             className="radio-input"
+                            ref={presentationTypeRef}
                         />
-                        Speaker
+                        <span>Speaker</span>
                     </label>
                     <label className="radio-label">
                         <input
@@ -1109,7 +1010,7 @@ const Register: React.FC<{
                             onChange={handleInputChange}
                             className="radio-input"
                         />
-                        Poster
+                        <span>Poster</span>
                     </label>
                     <label className="radio-label">
                         <input
@@ -1120,7 +1021,7 @@ const Register: React.FC<{
                             onChange={handleInputChange}
                             className="radio-input"
                         />
-                        Delegate
+                        <span>Delegate</span>
                     </label>
                     <label className="radio-label">
                         <input
@@ -1131,7 +1032,7 @@ const Register: React.FC<{
                             onChange={handleInputChange}
                             className="radio-input"
                         />
-                        Listener
+                        <span>Listener</span>
                     </label>
                     <label className="radio-label">
                         <input
@@ -1142,7 +1043,7 @@ const Register: React.FC<{
                             onChange={handleInputChange}
                             className="radio-input"
                         />
-                        Student
+                        <span>Student</span>
                     </label>
                     <label className="radio-label">
                         <input
@@ -1153,51 +1054,79 @@ const Register: React.FC<{
                             onChange={handleInputChange}
                             className="radio-input"
                         />
-                        Exhibitor
+                        <span>Exhibitor</span>
                     </label>
                 </div>
-                {errors.presentationType && <div className="error-text">{errors.presentationType}</div>}
+                {errors.presentationType && <p className="error-text">{errors.presentationType}</p>}
             </div>
 
             {registerFormData.registrationType === 'registrationAndAccommodation' && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-4">
-                    <h3 className="text-lg font-medium text-gray-900 mb-4">
-                        Accommodation Details
-                    </h3>
+                    <div className="flex items-center mb-4">
+                        <svg className="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        <h4 className="text-lg font-semibold text-blue-900">Accommodation Options</h4>
+                    </div>
 
-                    <div className="accommodation-selectors">
+                    {/* Posh clarification info box */}
+                    <div className="mb-4 p-4 bg-gradient-to-r from-blue-100 to-blue-50 border-l-4 border-blue-400 rounded-lg shadow">
+                        <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3"/>
+                            </svg>
+                            <span className="text-blue-900 font-medium text-base">
+                                {registerFormData.guests === 0
+                                    ? 'Accommodation will be provided for you only.'
+                                    : `Accommodation will be provided for you and ${registerFormData.guests} additional guest${registerFormData.guests > 1 ? 's' : ''}.`
+                                }
+                            </span>
+                        </div>
+                        <p className="text-xs text-blue-700 mt-2">
+                            Select the number of guests to clarify your accommodation needs.<br />
+                            <span className="font-semibold">0</span> means only you, <span className="font-semibold">1</span> or more means you plus that number of guests.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Number of Nights
-                            </label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Number of Guests</label>
                             <select
-                                name="nights"
-                                value={registerFormData.nights}
+                                name="guests"
+                                value={registerFormData.guests}
                                 onChange={handleInputChange}
-                                className="form-select w-32"
+                                className="form-select"
                             >
-                                {[1, 2, 3, 4, 5].map(night => (
-                                    <option key={night} value={night}>{night} night{night > 1 ? 's' : ''}</option>
+                                {[...Array(11)].map((_, i) => (
+                                    <option key={i} value={i}>
+                                        {i === 0 ? '0 (Just Me)' : `${i} Guest${i > 1 ? 's' : ''}`}
+                                    </option>
                                 ))}
                             </select>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Number of Guests
-                            </label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Number of Nights</label>
                             <select
-                                name="guests"
-                                value={registerFormData.guests}
+                                name="nights"
+                                value={registerFormData.nights}
                                 onChange={handleInputChange}
-                                className="form-select w-32"
+                                className="form-select"
                             >
-                                <option value={0}>Just Me</option>
-                                <option value={1}>Me + 1 Guest</option>
-                                <option value={2}>Me + 2 Guests</option>
-                                <option value={3}>Me + 3 Guests</option>
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
+                                    <option key={num} value={num}>{num}</option>
+                                ))}
                             </select>
                         </div>
+                    </div>
+
+                    <div className="mt-4 p-3 bg-white border border-blue-200 rounded text-sm text-gray-700">
+                        <p className="font-medium text-gray-900 mb-1">Accommodation Details:</p>
+                        <p>• Conference Date: May 15-16, 2026</p>
+                        <p>• Location: Crowne Plaza Rome - St. Peter’s, Rome, Italy</p>
+                        <p>• Registration Deadline: January 25, 2026</p>
+                        <p>• Selected: {registerFormData.guests} guest{registerFormData.guests > 1 ? 's' : ''} for {registerFormData.nights} night{registerFormData.nights > 1 ? 's' : ''}</p>
                     </div>
                 </div>
             )}
@@ -1308,7 +1237,7 @@ const Register: React.FC<{
                                             <p>• Duration: {config.accommodationOption.nights} night{config.accommodationOption.nights > 1 ? 's' : ''}</p>
                                             <p>• Capacity: {config.accommodationOption.guests} guest{config.accommodationOption.guests > 1 ? 's' : ''}</p>
                                             <p>• Check-in: May 14, 2026</p>
-                                            <p>• Check-out: May {14 + config.accommodationOption.nights}, 2026</p>
+                                            <p>• Check-out: May ${14 + config.accommodationOption.nights}, 2026</p>
                                         </div>
                                     </div>
                                 )}
@@ -1322,7 +1251,7 @@ const Register: React.FC<{
                             </svg>
                             <div className="text-sm text-blue-800">
                                 <p className="font-semibold mb-1">Secure Payment Process</p>
-                                <p>Choose your preferred payment method below. You'll be redirected to our secure payment processor to complete your registration payment in euros (EUR).</p>
+                                <p>After clicking "Register & Pay Now", you'll be redirected to our secure Stripe payment page to complete your registration payment in euros (EUR).</p>
                             </div>
                         </div>
                     </div>
@@ -1337,45 +1266,23 @@ const Register: React.FC<{
                     <strong>Payment Error:</strong> {paymentError}
                 </div>
             )}
-            {paypalMessage && (
-                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
-                    <strong>PayPal Status:</strong> {paypalMessage}
-                </div>
-            )}
 
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
+            <div className="flex justify-center">
                 <button
-                    type="button"
-                    onClick={() => handlePayment(handleStripePayment)}
+                    type="submit"
                     disabled={isProcessingPayment || !pricing || pricing.length === 0}
-                    className={`px-8 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${isProcessingPayment || !pricing || pricing.length === 0
+                    className={`px-8 py-3 rounded-lg font-semibold transition-colors ${isProcessingPayment || !pricing || pricing.length === 0
                         ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
                         : 'bg-black text-white hover:bg-gray-800'
                         }`}
                 >
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                    </svg>
-                    {isProcessingPayment ? 'Processing...' : 'Pay with Stripe'}
-                </button>
-                <button
-                    type="button"
-                    onClick={handlePayPalDirectPayment}
-                    disabled={isProcessingPayment || !pricing || pricing.length === 0}
-                    className={`px-8 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${isProcessingPayment || !pricing || pricing.length === 0
-                        ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
-                >
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a.631.631 0 0 1 .633-.74h4.607a.641.641 0 0 1 .633.74l-3.107 19.696c-.082.519-.53.901-1.054.901h-4.607a.631.631 0 0 1-.633-.74l3.108-19.696z"/>
-                    </svg>
-                    {isProcessingPayment ? 'Processing...' : 'Pay with PayPal'}
+                    {isProcessingPayment ? 'Processing...' : 'Register & Pay Now'}
                 </button>
             </div>
         </form>
+
     );
-};
+}
 
 const RegistrationPage: React.FC = () => {
     const [captchaCode, setCaptchaCode] = useState<string>('');
@@ -1416,7 +1323,7 @@ const RegistrationPage: React.FC = () => {
             country: '',
             registrationType: '',
             presentationType: '',
-            guests: 0,
+            guests: 0, // Reset to 0 (Just Me)
             nights: 1,
             accompanyingPerson: false,
             extraNights: 0,
@@ -1432,18 +1339,24 @@ const RegistrationPage: React.FC = () => {
     return (
         <>
             <Header />
-            <div className="min-h-screen bg-gray-50 py-12">
-                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="bg-white shadow-xl rounded-lg overflow-hidden">
-                        <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-8">
-                            <h1 className="text-3xl font-bold text-white text-center">
-                                Nursing Summit 2026 Registration
-                            </h1>
-                            <p className="text-teal-100 text-center mt-2">
-                                Join us in Prague for the premier nursing conference
+            <div>
+                <Style />
+                <section className="bg-gradient-to-b from-gray-50 pb-8 to-white">
+                    <div className="container mx-auto px-4 py-16 max-w-4xl">
+                        <div className="text-center mb-12">
+                            <span className="inline-block px-3 py-1 text-sm font-semibold text-black bg-gray-200 rounded-full mb-1">
+                                REGISTRATION OPEN
+                            </span>
+                            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 tracking-tight">
+                                Conference Registration
+                            </h2>
+                            <div className="w-24 h-1 bg-black mx-auto mb-6"></div>
+                            <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
+                                Register for the  Nursing Summit 2026
                             </p>
                         </div>
-                        <div className="px-6 py-8">
+
+                        <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
                             <Register
                                 captchaCode={captchaCode}
                                 generateCaptcha={generateCaptcha}
@@ -1452,7 +1365,25 @@ const RegistrationPage: React.FC = () => {
                             />
                         </div>
                     </div>
-                </div>
+                </section>
+
+                {showModal && (
+                    <div className="modal">
+                        <div className="modal-content">
+                            <h3 className="text-xl font-semibold mb-4">Registration Successful!</h3>
+                            <p className="mb-4">Thank you for registering for the Nursing Summit 2026.</p>
+                            <button
+                                className="modal-button"
+                                onClick={() => {
+                                    setShowModal(false);
+                                    resetForm();
+                                }}
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
             <FooterSection />
         </>
