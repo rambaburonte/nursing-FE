@@ -4,11 +4,13 @@ import { CheckCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import Header from '../components/Header';
 import FooterSection from '../components/FooterSections';
+import { PAYMENT_API_URL } from '../config';
 
 
 const PaymentSuccess = () => {
     const [registrationStatus, setRegistrationStatus] = useState<'pending' | 'success' | 'error' | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
+    const [debugInfo, setDebugInfo] = useState('');
     const location = useLocation();
     const [transactionId, setTransactionId] = useState<string | null>(null);
 
@@ -28,34 +30,60 @@ const PaymentSuccess = () => {
             setRegistrationStatus('pending');
             try {
                 // 1. Check payment status
-                const statusRes = await fetch(`${import.meta.env.VITE_API_BASE_URL || "https://nursing.markmarketing.xyz"}/api/payment/status/${sessionId}`);
+                console.log('Calling status API for session:', sessionId);
+                const statusRes = await fetch(`${PAYMENT_API_URL}/api/payment/status/${sessionId}`);
+                console.log('Status API response status:', statusRes.status);
+                
                 if (!statusRes.ok) {
+                    const errorText = await statusRes.text();
+                    console.error('Status API error:', errorText);
                     setRegistrationStatus('error');
-                    setErrorMsg('Could not verify payment status.');
+                    setErrorMsg(`Could not verify payment status. Response: ${statusRes.status} ${errorText}`);
                     return;
                 }
+                
                 const statusData = await statusRes.json();
-                if (statusData.status !== 'success') {
+                console.log('Status API response data:', statusData);
+                setDebugInfo(`Status API Response: ${JSON.stringify(statusData, null, 2)}`);
+                
+                // Check if payment is successful - check both paymentStatus and status fields
+                const isPaymentSuccessful = 
+                    statusData.paymentStatus === 'paid' || 
+                    statusData.status === 'COMPLETED' ||
+                    (statusData.paymentStatus === 'no_payment_required');
+                
+                if (!isPaymentSuccessful) {
                     setRegistrationStatus('error');
-                    setErrorMsg('Payment not successful.');
+                    setErrorMsg(`Payment verification failed. PaymentStatus: ${statusData.paymentStatus || 'unknown'}, Status: ${statusData.status || 'unknown'}. Please contact support if payment was deducted.`);
                     return;
                 }
 
                 // 2. Update payment status in DB
-                const updateRes = await fetch(`${import.meta.env.VITE_API_BASE_URL || "https://nursing.markmarketing.xyz"}/api/payment/update`, {
+                console.log('Calling update API for session:', sessionId);
+                const updateRes = await fetch(`${PAYMENT_API_URL}/api/payment/update`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `sessionId=${encodeURIComponent(sessionId)}`,
                 });
+                console.log('Update API response status:', updateRes.status);
+                
                 if (!updateRes.ok) {
+                    const errorText = await updateRes.text();
+                    console.error('Update API error:', errorText);
                     setRegistrationStatus('error');
-                    setErrorMsg('Failed to update payment status in database.');
+                    setErrorMsg(`Failed to update payment status in database. Response: ${updateRes.status} ${errorText}`);
                     return;
                 }
+                
+                const updateData = await updateRes.json();
+                console.log('Update API response data:', updateData);
+                
+                // Success - payment verified and database updated
                 setRegistrationStatus('success');
             } catch (err) {
+                console.error('Error in checkAndUpdatePayment:', err);
                 setRegistrationStatus('error');
-                setErrorMsg('Error processing payment status.');
+                setErrorMsg(`Error processing payment status: ${err instanceof Error ? err.message : 'Unknown error'}`);
             }
         };
         checkAndUpdatePayment();
@@ -72,16 +100,24 @@ const PaymentSuccess = () => {
                         Thank you for registering for the Nursing Summit 2026. A confirmation email has been sent to your registered email address.
                     </p>
                     {transactionId && (
-                        <p className="text-green-800 font-semibold mb-2">Transaction ID: <span className="font-mono">{transactionId}</span></p>
+                        <p className="text-green-800 font-semibold mb-2">Session ID: <span className="font-mono">{transactionId}</span></p>
                     )}
                     {registrationStatus === 'pending' && (
-                        <p className="text-blue-600 mb-4">Submitting your registration details...</p>
+                        <p className="text-blue-600 mb-4">Verifying payment and updating registration...</p>
                     )}
                     {registrationStatus === 'success' && (
-                        <p className="text-green-600 mb-4">Registration completed successfully after payment.</p>
+                        <p className="text-green-600 mb-4">Payment verified and registration completed successfully!</p>
                     )}
                     {registrationStatus === 'error' && (
-                        <p className="text-red-600 mb-4">{errorMsg}</p>
+                        <div className="text-red-600 mb-4">
+                            <p className="mb-2">{errorMsg}</p>
+                            {debugInfo && (
+                                <details className="text-xs">
+                                    <summary>Debug Info (Click to expand)</summary>
+                                    <pre className="whitespace-pre-wrap mt-2 p-2 bg-gray-100 rounded text-left">{debugInfo}</pre>
+                                </details>
+                            )}
+                        </div>
                     )}
                     <Link
                         to="/"
