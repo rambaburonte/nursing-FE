@@ -14,24 +14,43 @@ const PaymentSuccess = () => {
     const [pollCount, setPollCount] = useState(0);
     const location = useLocation();
 
-    const handlePayPalReturn = async (token: string, payerId: string) => {
+    const handlePayPalReturn = async (token: string, payerId: string, isDiscountPayment: boolean = false) => {
         setRegistrationStatus('pending');
-        setDebugInfo(`PayPal return: token=${token}, PayerID=${payerId}`);
+        setDebugInfo(`PayPal return: token=${token}, PayerID=${payerId}, isDiscount=${isDiscountPayment}`);
 
         try {
-            // Get stored registration data
-            const storedData = localStorage.getItem('paypalRegistration');
+            // Get stored registration data based on payment type
+            // For discount payments, check sessionStorage first (as DiscountRegistrationPage uses sessionStorage)
+            // For regular payments, check localStorage first (as Register.tsx uses localStorage)
+            const storageKey = isDiscountPayment ? 'paypalDiscountRegistration' : 'paypalRegistration';
+            let storedData;
+            
+            if (isDiscountPayment) {
+                // For discount payments: sessionStorage first, then localStorage
+                storedData = sessionStorage.getItem(storageKey) || localStorage.getItem(storageKey);
+            } else {
+                // For regular payments: localStorage first, then sessionStorage
+                storedData = localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey);
+            }
+            
             if (!storedData) {
                 setRegistrationStatus('error');
-                setErrorMsg('PayPal registration data not found. Please try registering again.');
+                setErrorMsg(`PayPal ${isDiscountPayment ? 'discount ' : ''}registration data not found. Please try registering again.`);
                 return;
             }
 
             const registrationData = JSON.parse(storedData);
             console.log('Retrieved registration data:', registrationData);
 
+            // Choose the appropriate API endpoint based on payment type
+            const captureEndpoint = isDiscountPayment 
+                ? `/api/discounts/paypal/capture/${token}` 
+                : `/api/payment/paypal/capture/${token}`;
+
+            console.log(`🎯 Using ${isDiscountPayment ? 'DISCOUNT' : 'REGULAR'} PayPal capture endpoint: ${PAYMENT_API_URL}${captureEndpoint}`);
+
             // Capture the PayPal payment
-            const captureResponse = await fetch(`${PAYMENT_API_URL}/api/payment/paypal/capture/${token}`, {
+            const captureResponse = await fetch(`${PAYMENT_API_URL}${captureEndpoint}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -40,44 +59,46 @@ const PaymentSuccess = () => {
 
             if (!captureResponse.ok) {
                 const errorData = await captureResponse.json();
-                throw new Error(errorData.message || 'Failed to capture PayPal payment');
+                throw new Error(errorData.message || errorData.errorMessage || 'Failed to capture PayPal payment');
             }
 
             const captureResult = await captureResponse.json();
-            console.log('PayPal capture result:', captureResult);
+            console.log('PayPal capture result:', JSON.stringify(captureResult, null, 2));
 
-            if (captureResult.status === 'COMPLETED') {
-                // Complete user registration
-                const registrationPayload = {
-                    name: registrationData.name,
-                    phone: registrationData.phone,
-                    email: registrationData.email,
-                    instituteOrUniversity: registrationData.instituteOrUniversity,
-                    country: registrationData.country,
-                    presentationType: registrationData.presentationType,
-                };
-
-                const regResponse = await fetch(`${PAYMENT_API_URL}/api/registration/register`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(registrationPayload),
-                });
-
-                if (regResponse.ok) {
-                    console.log('Registration completed successfully after PayPal payment');
-                    setRegistrationStatus('success');
-                    
-                    // Clean up stored data
-                    localStorage.removeItem('paypalRegistration');
+            // Check for successful capture - different possible response formats
+            console.log('Checking capture response success conditions...');
+            console.log('captureResult.status:', captureResult.status);
+            console.log('captureResult.paymentStatus:', captureResult.paymentStatus);
+            console.log('captureResult.success:', captureResult.success);
+            
+            // More comprehensive success checking
+            const isSuccessful = 
+                captureResult.success === true || 
+                captureResult.status === 'COMPLETED' || 
+                captureResult.paymentStatus === 'paid' ||
+                (captureResult.status && captureResult.status.includes('success')) ||
+                (captureResult.orderId && captureResult.success !== false); // If we have an orderId and success is not explicitly false
+            
+            if (isSuccessful) {
+                
+                console.log(`✅ PayPal ${isDiscountPayment ? 'discount ' : ''}payment captured successfully`);
+                setRegistrationStatus('success');
+                
+                // Clean up stored data from both storage types
+                if (isDiscountPayment) {
+                    sessionStorage.removeItem('paypalDiscountRegistration');
+                    localStorage.removeItem('paypalDiscountRegistration'); // Clean up both just in case
                 } else {
-                    console.log('Registration failed but PayPal payment was successful');
-                    setRegistrationStatus('error');
-                    setErrorMsg('Payment completed successfully, but registration failed. Please contact support.');
+                    localStorage.removeItem('paypalRegistration');
+                    sessionStorage.removeItem('paypalRegistration'); // Clean up both just in case
                 }
+                
+                // NOTE: No need to call registration API again since registration 
+                // was already completed during PayPal order creation
+                
             } else {
-                throw new Error('PayPal payment was not completed');
+                console.error('❌ PayPal capture failed. Full response:', JSON.stringify(captureResult, null, 2));
+                throw new Error(`PayPal payment capture failed. Status: ${captureResult.status || 'unknown'}, Details: ${captureResult.message || captureResult.errorMessage || 'No details available'}`);
             }
 
         } catch (error) {
@@ -94,10 +115,39 @@ const PaymentSuccess = () => {
         const paypalToken = params.get('token'); // PayPal payment
         const paypalPayerId = params.get('PayerID'); // PayPal payment
         const paymentType = params.get('type'); // Check for type=discount parameter
+        const paymentMethod = params.get('paymentMethod'); // Check for paymentMethod=paypal parameter
+
+        // Debug: Log all URL parameters
+        console.log('🔍 PaymentSuccess URL:', window.location.href);
+        console.log('🔍 All URL parameters:');
+        params.forEach((value, key) => {
+            console.log(`  ${key}: ${value}`);
+        });
+
+        // Detect if this is a discount payment
+        // Check URL parameter first, then check stored registration data as fallback
+        let isDiscountPayment = paymentType === 'discount';
+        console.log('🔍 Initial isDiscountPayment from URL parameter:', isDiscountPayment, 'paymentType:', paymentType);
+        
+        // If URL parameter doesn't indicate discount, check stored data
+        if (!isDiscountPayment && paypalToken) {
+            // Check sessionStorage first since DiscountRegistrationPage uses sessionStorage
+            const discountData = sessionStorage.getItem('paypalDiscountRegistration') || localStorage.getItem('paypalDiscountRegistration');
+            console.log('🔍 Checking stored registration data for discount payment detection');
+            console.log('🔍 sessionStorage paypalDiscountRegistration:', sessionStorage.getItem('paypalDiscountRegistration'));
+            console.log('🔍 localStorage paypalDiscountRegistration:', localStorage.getItem('paypalDiscountRegistration'));
+            if (discountData) {
+                console.log('✅ Detected discount payment from stored registration data');
+                isDiscountPayment = true;
+            } else {
+                console.log('❌ No discount registration data found in storage');
+            }
+        }
 
         // Handle PayPal return
         if (paypalToken && paypalPayerId) {
-            handlePayPalReturn(paypalToken, paypalPayerId);
+            console.log(`🎯 Final Decision: Handling PayPal return - isDiscount: ${isDiscountPayment}, paymentMethod: ${paymentMethod}, type: ${paymentType}, token: ${paypalToken}`);
+            handlePayPalReturn(paypalToken, paypalPayerId, isDiscountPayment);
             return;
         }
 
@@ -240,46 +290,53 @@ const PaymentSuccess = () => {
         </div>
     );
 
-    const SuccessContent = () => (
-        <div className="text-center">
-            {/* Success Icon */}
-            <div className="mx-auto mb-6 w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle className="text-green-600 w-16 h-16" />
-            </div>
-
-            {/* Main Success Message */}
-            <h1 className="text-4xl font-bold text-gray-900 mb-3">
-                Registration Complete!
-            </h1>
-            <p className="text-xl text-gray-600 mb-8">
-                Welcome to the Nursing Summit 2026
-            </p>
-
-            {/* Success Features */}
-            <div className="space-y-4 mb-8">
-                <div className="flex items-center justify-center space-x-3 text-green-700">
-                    <Mail className="w-5 h-5" />
-                    <span>Confirmation email sent to your inbox</span>
+    const SuccessContent = () => {
+        const params = new URLSearchParams(location.search);
+        const isDiscountPayment = params.get('type') === 'discount';
+        
+        return (
+            <div className="text-center">
+                {/* Success Icon */}
+                <div className="mx-auto mb-6 w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">
+                    <CheckCircle className="text-green-600 w-16 h-16" />
                 </div>
-              
-                <div className="flex items-center justify-center space-x-3 text-green-700">
-                    <Users className="w-5 h-5" />
-                    <span>Access to exclusive networking platform</span>
-                </div>
-            </div>
 
-            {/* What's Next Section */}
-            <div className="bg-green-50 rounded-xl p-6 mb-8">
-                <h3 className="text-lg font-semibold text-green-800 mb-3">What's Next?</h3>
-                <div className="text-left space-y-2 text-green-700">
-                    <p>• Check your email for detailed summit information</p>
-                    <p>• Add the event dates to your calendar</p>
-                    <p>• Join our exclusive participant community</p>
-                    <p>• Prepare for an inspiring learning experience</p>
+                {/* Main Success Message */}
+                <h1 className="text-4xl font-bold text-gray-900 mb-3">
+                    {isDiscountPayment ? 'Discount Registration Complete!' : 'Registration Complete!'}
+                </h1>
+                <p className="text-xl text-gray-600 mb-8">
+                    {isDiscountPayment 
+                        ? 'Your discount registration has been successfully processed'
+                        : 'Welcome to the Nursing Summit 2026'}
+                </p>
+
+                {/* Success Features */}
+                <div className="space-y-4 mb-8">
+                    <div className="flex items-center justify-center space-x-3 text-green-700">
+                        <Mail className="w-5 h-5" />
+                        <span>Confirmation email sent to your inbox</span>
+                    </div>
+                  
+                    <div className="flex items-center justify-center space-x-3 text-green-700">
+                        <Users className="w-5 h-5" />
+                        <span>Access to exclusive networking platform</span>
+                    </div>
+                </div>
+
+                {/* What's Next Section */}
+                <div className="bg-green-50 rounded-xl p-6 mb-8">
+                    <h3 className="text-lg font-semibold text-green-800 mb-3">What's Next?</h3>
+                    <div className="text-left space-y-2 text-green-700">
+                        <p>• Check your email for detailed summit information</p>
+                        <p>• Add the event dates to your calendar</p>
+                        <p>• Join our exclusive participant community</p>
+                        <p>• Prepare for an inspiring learning experience</p>
+                    </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     const PendingContent = () => (
         <div className="text-center">
