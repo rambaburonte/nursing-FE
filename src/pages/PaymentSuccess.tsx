@@ -303,11 +303,11 @@ const PaymentSuccess = () => {
 
                 {/* Main Success Message */}
                 <h1 className="text-4xl font-bold text-gray-900 mb-3">
-                    {isDiscountPayment ? 'Discount Registration Complete!' : 'Registration Complete!'}
+                    {isDiscountPayment ? 'Discount Payment Success!' : 'Registration Complete!'}
                 </h1>
                 <p className="text-xl text-gray-600 mb-8">
                     {isDiscountPayment 
-                        ? 'Your discount registration has been successfully processed'
+                        ? 'Your discount payment has been successfully processed'
                         : 'Welcome to the Nursing Summit 2026'}
                 </p>
 

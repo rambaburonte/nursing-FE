@@ -89,12 +89,17 @@ const DiscountRegistrationPage = () => {
 
         setSubmitting(true);
         try {
-            // Prepare request body as per backend DTO, but send discountAmount as-is (no cents conversion)
+            // Calculate total amount including 5% processing fee
+            const baseAmount = parseFloat(form.discountAmount);
+            const processingFee = baseAmount * 0.05;
+            const totalAmount = baseAmount + processingFee;
+            
+            // Prepare request body as per backend DTO
             const reqBody = {
                 productName: "NURSING 2026 DISCOUNT REGISTRATION",
-                description: `NURSING 2026 DISCOUNT REQUEST: ${form.description}`,
+                description: `NURSING 2026 DISCOUNT REQUEST: ${form.description} (Base: €${baseAmount.toFixed(2)}, Processing Fee: €${processingFee.toFixed(2)})`,
                 orderReference: `DISCOUNT-${Date.now()}`,
-                unitAmount: form.discountAmount, // send as entered
+                unitAmount: totalAmount.toFixed(2), // send total amount including processing fee
                 quantity: 1,
                 currency: "eur",
                 successUrl: window.location.origin + "/payment-success",
@@ -154,6 +159,11 @@ const DiscountRegistrationPage = () => {
         setPaypalProcessing(true);
         
         try {
+            // Calculate total amount including 5% processing fee
+            const baseAmount = parseFloat(form.discountAmount);
+            const processingFee = baseAmount * 0.05;
+            const totalAmount = baseAmount + processingFee;
+            
             // Create PayPal order via API
             const paypalRequest = {
                 customerEmail: form.email,
@@ -161,7 +171,7 @@ const DiscountRegistrationPage = () => {
                 phone: form.phone,
                 country: form.country,
                 instituteOrUniversity: form.institute,
-                amount: parseFloat(form.discountAmount),
+                amount: totalAmount, // send total amount including processing fee
                 currency: 'EUR',
                 successUrl: `${window.location.origin}/payment-success`,
                 cancelUrl: `${window.location.origin}/discount-registration`
@@ -191,7 +201,9 @@ const DiscountRegistrationPage = () => {
                         instituteOrUniversity: form.institute,
                         country: form.country,
                         description: form.description,
-                        discountAmount: parseFloat(form.discountAmount),
+                        discountAmount: baseAmount,
+                        processingFee: processingFee,
+                        totalAmount: totalAmount,
                         orderId: data.orderId
                     };
                     sessionStorage.setItem('paypalDiscountRegistration', JSON.stringify(registrationData));
@@ -381,6 +393,29 @@ const DiscountRegistrationPage = () => {
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleChange("discountAmount", e.target.value)} 
                         />
                         {formErrors.discountAmount && <p className="text-red-500 text-xs mt-1">{formErrors.discountAmount}</p>}
+                        
+                        {/* Pricing Summary with Processing Fee */}
+                        {form.discountAmount && !isNaN(Number(form.discountAmount)) && Number(form.discountAmount) > 0 && (
+                            <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                <h4 className="font-semibold text-gray-900 mb-3">Payment Summary</h4>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-600">Discount Amount</span>
+                                        <span className="font-medium">€{Number(form.discountAmount).toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-600">Processing Fee (5%)</span>
+                                        <span className="font-medium">€{(Number(form.discountAmount) * 0.05).toFixed(2)}</span>
+                                    </div>
+                                    <div className="border-t border-gray-300 pt-2">
+                                        <div className="flex justify-between items-center font-bold text-lg">
+                                            <span>Total Amount</span>
+                                            <span className="text-blue-600">€{(Number(form.discountAmount) * 1.05).toFixed(2)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Payment Method Selection */}
@@ -446,7 +481,9 @@ const DiscountRegistrationPage = () => {
                     >
                         {paypalProcessing ? 'Redirecting to PayPal...' : 
                          submitting ? 'Processing...' : 
-                         paymentMethod === 'stripe' ? 'Pay with Stripe' : 'Pay with PayPal'}
+                         form.discountAmount && !isNaN(Number(form.discountAmount)) && Number(form.discountAmount) > 0 
+                           ? `Pay €${(Number(form.discountAmount) * 1.05).toFixed(2)} with ${paymentMethod === 'stripe' ? 'Stripe' : 'PayPal'}`
+                           : paymentMethod === 'stripe' ? 'Pay with Stripe' : 'Pay with PayPal'}
                     </button>
                 </form>
             </div>
