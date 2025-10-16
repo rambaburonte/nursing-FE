@@ -579,7 +579,7 @@ const Register: React.FC<{
                     return { orderId: data.orderId, approvalUrl: data.approvalUrl };
                 } else if (data.orderId) {
                     // Fallback: construct approval URL if not provided
-                    const approvalUrl = `https://www.sandbox.paypal.com/checkoutnow?token=${data.orderId}`;
+                    const approvalUrl = `https://www.api.paypal.com/checkoutnow?token=${data.orderId}`;
                     return { orderId: data.orderId, approvalUrl: approvalUrl };
                 } else {
                     throw new Error('Invalid response from PayPal service - no orderId');

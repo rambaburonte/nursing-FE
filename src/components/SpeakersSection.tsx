@@ -11,6 +11,7 @@ interface Speaker {
   name: string;
   title?: string;
   institution?: string;
+  university?: string;
   image?: string;
   imageUrl?: string;
   bio?: string;
@@ -69,13 +70,11 @@ const SpeakersSection = () => {
             {speakers.map((speaker, index) => (
               <div
                 key={speaker.id || index}
-                data-aos="fade-up"
-                data-aos-delay={`${index * 150}`}
-                className="hover:scale-[1.03] transition-transform duration-300"
+                className="transition-transform duration-300"
               >
-                <Card className="text-center border-0 shadow-md hover:shadow-xl transition-shadow bg-white h-full rounded-2xl">
+                <Card className="text-center border-0 shadow-md bg-white h-full rounded-2xl">
                   <CardContent className="p-8">
-                    <div className="w-32 h-32 rounded-full mx-auto mb-6 overflow-hidden border-[6px] border-white shadow-inner shadow-nursing-primary/20 aspect-square bg-white">
+                    <div className="w-32 h-32 rounded-full mx-auto mb-6 overflow-hidden border-4 border-nursing-accent">
                       {speaker.imageUrl && (
                         <img
                           src={speaker.imageUrl}
@@ -88,7 +87,7 @@ const SpeakersSection = () => {
                     </div>
                     <h3 className="text-xl font-bold text-nursing-text mb-2">{speaker.name}</h3>
                     <p className="text-nursing-primary font-medium mb-1">{speaker.title}</p>
-                    <p className="text-nursing-text-light mb-4">{speaker.institution}</p>
+                    <p className="text-nursing-text-light mb-4">{speaker.university || speaker.institution}</p>
                     <p className="text-sm text-nursing-text-light leading-relaxed mb-4">{speaker.bio}</p>
 
                     {speaker.link && (

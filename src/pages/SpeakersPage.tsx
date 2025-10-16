@@ -67,7 +67,7 @@ const SpeakersPage = () => {
                             {speakers.map((speaker, index) => (
                                 <Card
                                     key={speaker.id || index}
-                                    className="text-center border-0 shadow-lg hover:shadow-xl transition-shadow bg-white"
+                                    className="text-center border-0 shadow-md bg-white"
                                 >
                                     <CardContent className="p-8">
                                         <div className="w-32 h-32 rounded-full mx-auto mb-6 overflow-hidden border-4 border-nursing-accent">
@@ -75,7 +75,7 @@ const SpeakersPage = () => {
                                                 <img
                                                     src={speaker.imageUrl}
                                                     alt={speaker.name}
-                                                    className="w-full h-full object-cover"
+                                                    className="w-full h-full object-cover rounded-full"
                                                     loading="lazy"
                                                     onError={e => (e.currentTarget.src = placeholder)}
                                                 />
