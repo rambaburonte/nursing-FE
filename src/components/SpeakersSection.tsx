@@ -62,12 +62,13 @@ const SpeakersSection = () => {
         </div>
 
         {/* Speaker Cards */}
-        {error && <div className="text-red-500 text-center mb-4">{error}</div>}
+        {error && <div className="text-red-500 text-center mb-6">{error}</div>}
         {loading ? (
           <div className="text-center">Loading...</div>
         ) : (
-          <div className={`grid ${gridCols} gap-8 mb-12`}>
-            {speakers.map((speaker, index) => (
+          <div className="flex justify-center mb-12">
+            <div className="inline-grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
+            {speakers.slice(0, 5).map((speaker, index) => (
               <div
                 key={speaker.id || index}
                 className="transition-transform duration-300"
@@ -102,6 +103,7 @@ const SpeakersSection = () => {
                 </Card>
               </div>
             ))}
+            </div>
           </div>
         )}
 

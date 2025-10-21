@@ -43,8 +43,7 @@ const SpeakersPage = () => {
 
     // Dynamically determine grid columns based on speaker count
     let gridCols = "grid-cols-1";
-    if (speakers.length >= 6) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6";
-    else if (speakers.length === 5) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5";
+    if (speakers.length >= 5) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5";
     else if (speakers.length === 4) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-4";
     else if (speakers.length === 3) gridCols = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3";
     else if (speakers.length === 2) gridCols = "grid-cols-1 md:grid-cols-2";
