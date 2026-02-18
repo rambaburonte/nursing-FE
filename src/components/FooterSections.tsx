@@ -60,9 +60,9 @@ const FooterSection = () => {
                     <div>
                         <h4 className="text-lg font-bold mb-4 text-white">Important Dates</h4>
                         <ul className="space-y-2 text-sm">
-                            <li>📅 Early Bird: December 19, 2025 </li>
-                            <li>📅 Abstract Deadline: January 25, 2026</li>
-                            <li>📅 Standard Deadline: January 25, 2026</li>
+                            <li>📅 Early Bird: February 25, 2026 </li>
+                            <li>📅 Abstract Deadline: March 25, 2026</li>
+                            <li>📅 Standard Deadline: March 25, 2026</li>
                             <li>📅 Conference: May 15-16, 2026</li>
                         </ul>
                     </div>

@@ -1,15 +1,58 @@
 // Utility to fetch country list from a public API
 export async function fetchCountries(): Promise<string[]> {
     try {
-        const res = await fetch('https://restcountries.com/v3.1/all');
-        if (!res.ok) throw new Error('Failed to fetch countries');
+        // Try primary API
+        const res = await fetch('https://restcountries.com/v3.1/all', {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+            // Add timeout
+            signal: AbortSignal.timeout(10000) // 10 second timeout
+        });
+
+        if (!res.ok) throw new Error('Failed to fetch countries from primary API');
+
         const data = await res.json();
-        // Sort by common name
-        return data
-            .map((c: any) => c.name.common)
+
+        // Extract and sort country names, including all sovereign states and territories
+        const countries = data
+            .map((c: any) => c.name?.common || c.name?.official)
+            .filter((name: string) => name && name.trim().length > 0)
             .sort((a: string, b: string) => a.localeCompare(b));
-    } catch {
-        // fallback to a static list if API fails
+
+        // Remove duplicates
+        const uniqueCountries = [...new Set(countries)];
+
+        return uniqueCountries;
+
+    } catch (error) {
+        console.warn('Primary countries API failed, using fallback list:', error);
+
+        // Try secondary API as backup
+        try {
+            const backupRes = await fetch('https://countriesnow.space/api/v0.1/countries', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                },
+                signal: AbortSignal.timeout(5000)
+            });
+
+            if (backupRes.ok) {
+                const backupData = await backupRes.json();
+                if (backupData.data && Array.isArray(backupData.data)) {
+                    return backupData.data
+                        .map((c: any) => c.country)
+                        .filter((name: string) => name && name.trim().length > 0)
+                        .sort((a: string, b: string) => a.localeCompare(b));
+                }
+            }
+        } catch (backupError) {
+            console.warn('Backup countries API also failed:', backupError);
+        }
+
+        // Comprehensive fallback list with all possible countries and territories
         return [
             'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Antigua and Barbuda', 'Argentina', 'Armenia', 'Australia', 'Austria',
             'Azerbaijan', 'Bahamas', 'Bahrain', 'Bangladesh', 'Barbados', 'Belarus', 'Belgium', 'Belize', 'Benin', 'Bhutan', 'Bolivia',
@@ -30,7 +73,17 @@ export async function fetchCountries(): Promise<string[]> {
             'South Korea', 'South Sudan', 'Spain', 'Sri Lanka', 'Sudan', 'Suriname', 'Sweden', 'Switzerland', 'Syria', 'Taiwan',
             'Tajikistan', 'Tanzania', 'Thailand', 'Timor-Leste', 'Togo', 'Tonga', 'Trinidad and Tobago', 'Tunisia', 'Turkey',
             'Turkmenistan', 'Tuvalu', 'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States', 'Uruguay',
-            'Uzbekistan', 'Vanuatu', 'Vatican City', 'Venezuela', 'Vietnam', 'Yemen', 'Zambia', 'Zimbabwe', 'Other'
+            'Uzbekistan', 'Vanuatu', 'Vatican City', 'Venezuela', 'Vietnam', 'Yemen', 'Zambia', 'Zimbabwe',
+            // Additional countries and territories
+            'American Samoa', 'Anguilla', 'Aruba', 'Bermuda', 'British Indian Ocean Territory', 'British Virgin Islands',
+            'Cayman Islands', 'Christmas Island', 'Cocos (Keeling) Islands', 'Cook Islands', 'Curaçao', 'Falkland Islands',
+            'Faroe Islands', 'French Guiana', 'French Polynesia', 'Gibraltar', 'Greenland', 'Guadeloupe', 'Guam', 'Guernsey',
+            'Heard Island and McDonald Islands', 'Hong Kong', 'Isle of Man', 'Jersey', 'Macau', 'Martinique', 'Mayotte',
+            'Montserrat', 'New Caledonia', 'Niue', 'Norfolk Island', 'Northern Mariana Islands', 'Pitcairn Islands',
+            'Puerto Rico', 'Réunion', 'Saint Barthélemy', 'Saint Helena', 'Saint Martin', 'Saint Pierre and Miquelon',
+            'Sint Maarten', 'South Georgia and the South Sandwich Islands', 'Svalbard and Jan Mayen', 'Tokelau',
+            'Turks and Caicos Islands', 'U.S. Virgin Islands', 'Wallis and Futuna', 'Western Sahara', 'Åland Islands',
+            'Other'
         ];
     }
 }

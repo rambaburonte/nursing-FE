@@ -1125,7 +1125,7 @@ const Register: React.FC<{
                         <p className="font-medium text-gray-900 mb-1">Accommodation Details:</p>
                         <p>• Conference Date: May 15-16, 2026</p>
                         <p>• Location: Crowne Plaza Rome - St. Peter’s, Rome, Italy</p>
-                        <p>• Registration Deadline: January 25, 2026</p>
+                        <p>• Registration Deadline: March 25, 2026</p>
                         <p>• Selected: {registerFormData.guests} guest{registerFormData.guests > 1 ? 's' : ''} for {registerFormData.nights} night{registerFormData.nights > 1 ? 's' : ''}</p>
                     </div>
                 </div>

@@ -3,6 +3,7 @@ import Header from '../components/Header';
 import FooterSection from '../components/FooterSections';
 import { FaSyncAlt } from 'react-icons/fa';
 import { BASE_URL, PAYMENT_API_URL } from '../config';
+import { fetchCountries } from '../lib/countriesApi';
 
 interface RegisterFormData {
     title: string; // Frontend only field for user experience
@@ -312,6 +313,7 @@ const Register: React.FC<{
     const [paymentError, setPaymentError] = useState<string>('');
     const [paypalMessage, setPaypalMessage] = useState<string>('');
     const [showCaptcha, setShowCaptcha] = useState(false);
+    const [countries, setCountries] = useState<string[]>([]);
 
     // Add refs for error fields
     const nameRef = useRef<HTMLInputElement>(null);
@@ -398,6 +400,10 @@ const Register: React.FC<{
     useEffect(() => {
         fetchPricing();
     }, [registerFormData.registrationType, registerFormData.presentationType, registerFormData.nights, registerFormData.guests]);
+
+    useEffect(() => {
+        fetchCountries().then(setCountries);
+    }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -910,8 +916,12 @@ const Register: React.FC<{
                     <p>Crowne Plaza Rome - St. Peter's, Rome, Italy</p>
                 </div>
                 <div className="info-item">
-                    <label>Registration Deadline</label>
-                    <p>January 25, 2026</p>
+                    <label>Early Bird Deadline</label>
+                    <p>February 25, 2026</p>
+                </div>
+                <div className="info-item">
+                    <label>Standard Deadline</label>
+                    <p>March 25, 2026</p>
                 </div>
             </div>
 
@@ -1018,34 +1028,7 @@ const Register: React.FC<{
                         required
                     >
                         <option value="">Select Country</option>
-                        <option value="Afghanistan">Afghanistan</option>
-                        <option value="Albania">Albania</option>
-                        <option value="Algeria">Algeria</option>
-                        <option value="Argentina">Argentina</option>
-                        <option value="Australia">Australia</option>
-                        <option value="Austria">Austria</option>
-                        <option value="Bangladesh">Bangladesh</option>
-                        <option value="Belgium">Belgium</option>
-                        <option value="Brazil">Brazil</option>
-                        <option value="Canada">Canada</option>
-                        <option value="China">China</option>
-                        <option value="Czech Republic">Czech Republic</option>
-                        <option value="Denmark">Denmark</option>
-                        <option value="Egypt">Egypt</option>
-                        <option value="Finland">Finland</option>
-                        <option value="France">France</option>
-                        <option value="Germany">Germany</option>
-                        <option value="India">India</option>
-                        <option value="Italy">Italy</option>
-                        <option value="Japan">Japan</option>
-                        <option value="Netherlands">Netherlands</option>
-                        <option value="Norway">Norway</option>
-                        <option value="Poland">Poland</option>
-                        <option value="Spain">Spain</option>
-                        <option value="Sweden">Sweden</option>
-                        <option value="Switzerland">Switzerland</option>
-                        <option value="United Kingdom">United Kingdom</option>
-                        <option value="United States">United States</option>
+                        {countries.map(country => <option key={country} value={country}>{country}</option>)}
                     </select>
                     {errors.country && <div className="error-text">{errors.country}</div>}
                 </div>
