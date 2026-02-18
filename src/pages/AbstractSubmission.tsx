@@ -406,7 +406,7 @@ const AbstractSubmission: React.FC<{
                 </div>
                 <div className="info-item">
                     <label>Conference</label>
-                    <p>May 15-16, 2026</p>
+                    <p>May 15-16, 2026</p>
                 </div>
                 <div className="info-item">
                     <label>File Format</label>

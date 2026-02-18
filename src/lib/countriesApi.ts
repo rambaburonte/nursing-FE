@@ -1,4 +1,15 @@
 // Utility to fetch country list from a public API
+interface CountryData {
+  name?: {
+    common?: string;
+    official?: string;
+  };
+}
+
+interface BackupCountryData {
+  country: string;
+}
+
 export async function fetchCountries(): Promise<string[]> {
     try {
         // Try primary API
@@ -13,12 +24,12 @@ export async function fetchCountries(): Promise<string[]> {
 
         if (!res.ok) throw new Error('Failed to fetch countries from primary API');
 
-        const data = await res.json();
+        const data: CountryData[] = await res.json();
 
         // Extract and sort country names, including all sovereign states and territories
         const countries = data
-            .map((c: any) => c.name?.common || c.name?.official)
-            .filter((name: string) => name && name.trim().length > 0)
+            .map((c: CountryData) => c.name?.common || c.name?.official)
+            .filter((name: string | undefined): name is string => name !== undefined && name.trim().length > 0)
             .sort((a: string, b: string) => a.localeCompare(b));
 
         // Remove duplicates
@@ -43,7 +54,7 @@ export async function fetchCountries(): Promise<string[]> {
                 const backupData = await backupRes.json();
                 if (backupData.data && Array.isArray(backupData.data)) {
                     return backupData.data
-                        .map((c: any) => c.country)
+                        .map((c: BackupCountryData) => c.country)
                         .filter((name: string) => name && name.trim().length > 0)
                         .sort((a: string, b: string) => a.localeCompare(b));
                 }

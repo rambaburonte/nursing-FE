@@ -61,10 +61,10 @@ const ConferenceStats = () => {
 
   useEffect(() => {
     if (!hasAnimated) return;
-    let expertTarget = 150;
-    let topicsTarget = 40;
-    let expertStart = 0;
-    let topicsStart = 0;
+    const expertTarget = 150;
+    const topicsTarget = 40;
+    const expertStart = 0;
+    const topicsStart = 0;
     const duration = 2200; // slower animation
     const frameRate = 24; // fewer frames per second for a smoother, slower effect
     const totalFrames = Math.round(duration / (1000 / frameRate));

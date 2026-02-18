@@ -327,7 +327,7 @@ const Register: React.FC<{
     const errorSectionRef = useRef<HTMLDivElement>(null);
 
     // Map error keys to refs
-    const fieldRefs: { [key: string]: React.RefObject<any> } = {
+    const fieldRefs: { [key: string]: React.RefObject<HTMLElement> } = {
         name: nameRef,
         phone: phoneRef,
         email: emailRef,

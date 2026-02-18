@@ -139,8 +139,8 @@ const DiscountRegistrationPage = () => {
                 captcha: "",
             });
             generateCaptcha();
-        } catch (err: any) {
-            setError(err.message || "Submission failed. Please try again.");
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Submission failed. Please try again.");
         } finally {
             setSubmitting(false);
         }
@@ -225,9 +225,9 @@ const DiscountRegistrationPage = () => {
                 }
                 throw new Error(errorMessage);
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('PayPal order creation error:', error);
-            setError(`PayPal error: ${error.message || 'Unknown error'}`);
+            setError(`PayPal error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setSubmitting(false);
             setPaypalProcessing(false);
